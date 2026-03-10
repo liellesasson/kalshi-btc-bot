@@ -16,6 +16,7 @@ log = logging.getLogger("kalshi-bot")
 # ─── CONFIG (set via Render environment variables) ───────────────────────────
 KEY_ID   = os.getenv("KALSHI_KEY_ID", "")
 KEY_PEM  = os.getenv("KALSHI_PRIVATE_KEY", "").replace("\\n", "\n")
+ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 MIN_CONF = int(os.getenv("MIN_CONFIDENCE", "70"))       # AI confidence threshold
 MAX_BET  = int(os.getenv("MAX_BET_CENTS", "500"))       # max bet in cents ($5.00)
 MOM_THRESHOLD = float(os.getenv("MOMENTUM_THRESHOLD", "0.15"))  # % move to confirm trade
@@ -137,11 +138,14 @@ Reply ONLY with valid JSON (no markdown, no explanation):
 
     try:
         r = await client.post(ANTHROPIC_URL,
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01"},
             json={"model": "claude-sonnet-4-20250514", "max_tokens": 200,
                   "messages": [{"role": "user", "content": prompt}]},
             timeout=20)
-        text = r.json()["content"][0]["text"]
+        resp = r.json()
+        if "error" in resp:
+            raise Exception(f"Anthropic error: {resp["error"]}")
+        text = resp["content"][0]["text"]
         text = text.replace("```json", "").replace("```", "").strip()
         return json.loads(text)
     except Exception as e:
