@@ -1,8 +1,6 @@
 import os, time, base64, httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -13,14 +11,18 @@ app = FastAPI(title="Kalshi BTC Bot")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_origin_regex=".*",
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 KALSHI_BASE = "https://api.elections.kalshi.com/trade-api/v2"
 
 def load_key(pem_str: str):
     try:
+        pem_str = pem_str.strip()
         return serialization.load_pem_private_key(
             pem_str.encode(), password=None, backend=default_backend()
         )
@@ -60,13 +62,17 @@ class OrderRequest(AuthBase):
 def health():
     return {"status": "ok"}
 
+@app.options("/{path:path}")
+async def options_handler():
+    return {}
+
 @app.post("/api/balance")
 async def get_balance(body: AuthBase):
     pk = load_key(body.private_key_pem)
     path = "/trade-api/v2/portfolio/balance"
     headers = kalshi_headers(pk, body.key_id, "GET", path)
     async with httpx.AsyncClient() as client:
-        r = await client.get(KALSHI_BASE + "/portfolio/balance", headers=headers, timeout=10)
+        r = await client.get(KALSHI_BASE + "/portfolio/balance", headers=headers, timeout=15)
     if r.status_code != 200:
         raise HTTPException(r.status_code, r.text)
     return r.json()
@@ -77,7 +83,7 @@ async def get_positions(body: AuthBase):
     path = "/trade-api/v2/portfolio/positions"
     headers = kalshi_headers(pk, body.key_id, "GET", path)
     async with httpx.AsyncClient() as client:
-        r = await client.get(KALSHI_BASE + "/portfolio/positions", headers=headers, timeout=10)
+        r = await client.get(KALSHI_BASE + "/portfolio/positions", headers=headers, timeout=15)
     if r.status_code != 200:
         raise HTTPException(r.status_code, r.text)
     return r.json()
@@ -88,7 +94,7 @@ async def get_markets(series: str = "KXBTC15M", status: str = "open", limit: int
         r = await client.get(
             f"{KALSHI_BASE}/markets",
             params={"series_ticker": series, "status": status, "limit": limit},
-            timeout=10,
+            timeout=15,
         )
     if r.status_code != 200:
         raise HTTPException(r.status_code, r.text)
@@ -110,7 +116,7 @@ async def place_order(body: OrderRequest):
         "client_order_id": f"btcbot_{int(time.time()*1000)}",
     }
     async with httpx.AsyncClient() as client:
-        r = await client.post(KALSHI_BASE + "/portfolio/orders", headers=headers, json=payload, timeout=10)
+        r = await client.post(KALSHI_BASE + "/portfolio/orders", headers=headers, json=payload, timeout=15)
     if r.status_code not in (200, 201):
         raise HTTPException(r.status_code, r.text)
     return r.json()
@@ -121,7 +127,7 @@ async def list_orders(body: AuthBase):
     path = "/trade-api/v2/portfolio/orders"
     headers = kalshi_headers(pk, body.key_id, "GET", path)
     async with httpx.AsyncClient() as client:
-        r = await client.get(KALSHI_BASE + "/portfolio/orders?limit=20", headers=headers, timeout=10)
+        r = await client.get(KALSHI_BASE + "/portfolio/orders?limit=20", headers=headers, timeout=15)
     if r.status_code != 200:
         raise HTTPException(r.status_code, r.text)
     return r.json()
