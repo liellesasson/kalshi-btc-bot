@@ -73,7 +73,11 @@ async def kalshi_balance(client, pk, key_id):
     h = kheaders(pk, key_id, "GET", "/trade-api/v2/portfolio/balance")
     r = await client.get(KALSHI_BASE + "/portfolio/balance", headers=h, timeout=15)
     r.raise_for_status()
-    return (r.json().get("balance", {}).get("balance") or 0)  # cents
+    data = r.json()
+    bal = data.get("balance", data)
+    if isinstance(bal, dict):
+        return bal.get("balance") or bal.get("available_balance") or 0
+    return int(bal) if bal else 0
 
 async def kalshi_markets(client):
     r = await client.get(f"{KALSHI_BASE}/markets",
