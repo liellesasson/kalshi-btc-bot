@@ -63,7 +63,7 @@ def health():
     return {"status": "ok"}
 
 @app.options("/{path:path}")
-async def options_handler():
+async def options_handler(path: str):
     return {}
 
 @app.post("/api/balance")
