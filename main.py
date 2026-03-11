@@ -199,10 +199,9 @@ def detect_edge(market: dict, mom: dict) -> dict:
         edge_cents  = no_mispricing
         fair_value  = fair_no
     else:
-        # No directional edge — check spread
-        if spread_edge > 0:
-            # Market is underpricing — buy whichever side is cheaper
-            if yes_ask <= no_ask:
+        # No directional edge — only trade with momentum direction, never against it
+        if spread_edge > 0 and mom["direction"] != "NEUTRAL":
+            if mom["direction"] == "UP":
                 side, entry_price, edge_cents, fair_value = "yes", yes_ask, spread_edge/2 + abs(yes_mispricing), fair_yes
             else:
                 side, entry_price, edge_cents, fair_value = "no",  no_ask,  spread_edge/2 + abs(no_mispricing),  fair_no
