@@ -23,7 +23,7 @@ MIN_BAL       = float(os.getenv("MIN_BALANCE_CENTS", "300")) # min balance to tr
 MOM_THRESH    = float(os.getenv("MOMENTUM_THRESHOLD", "0.10"))
 MIN_CONF      = int(os.getenv("MIN_CONFIDENCE", "65"))
 BOT_ENABLED   = os.getenv("BOT_ENABLED", "true").lower() == "true"
-LOOP_SECS     = int(os.getenv("LOOP_INTERVAL_SECS", "60"))
+LOOP_SECS     = int(os.getenv("LOOP_INTERVAL_SECS", "90"))
 
 KALSHI_BASE   = "https://api.elections.kalshi.com/trade-api/v2"
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
@@ -430,6 +430,7 @@ async def trading_loop():
                 log.info(f"🔥 TRADING: {contracts}x {best_edge['side'].upper()} @ "
                          f"{best_edge['entry_price']}c on {best_market['ticker']} "
                          f"(edge={best_edge['edge_cents']}c EV={best_edge['ev']}c)")
+                await asyncio.sleep(3)  # rate limit buffer before order
                 try:
                     result = await kalshi_order(
                         client, pk, KEY_ID,
