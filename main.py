@@ -42,6 +42,7 @@ state = {
     "last_error":       None,
     "balance":          None,   # in cents
     "markets":          [],
+    "traded_tickers":   set(),  # tickers we already have open positions on
 }
 
 # ─── KALSHI AUTH ──────────────────────────────────────────────────────────────
@@ -386,6 +387,10 @@ async def trading_loop():
                                 continue
                         except Exception:
                             pass
+                    # Skip if we already have a position on this ticker
+                    if mkt["ticker"] in state["traded_tickers"]:
+                        log.info(f"Skipping {mkt['ticker']}: already have position")
+                        continue
                     e = detect_edge(mkt, mom)
                     if e["side"] and e["edge_cents"] > (best_edge["edge_cents"] if best_edge else 0):
                         best_edge   = e
@@ -455,6 +460,7 @@ async def trading_loop():
                         "order_id":   result.get("order", {}).get("order_id", "?"),
                     }
                     state["trade_log"].appendleft(entry)
+                    state["traded_tickers"].add(best_market["ticker"])
                     state["skip_reason"] = None
                     state["last_error"]  = None
                     log.info(f"✅ Order placed: {entry['order_id']}")
