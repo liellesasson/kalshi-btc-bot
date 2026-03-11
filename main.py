@@ -95,7 +95,8 @@ async def kalshi_order(client, pk, key_id, ticker, side, count, price_cents):
         "client_order_id": f"btcbot_{int(time.time()*1000)}",
     }
     r = await client.post(KALSHI_BASE + "/portfolio/orders", headers=h, json=payload, timeout=15)
-    r.raise_for_status()
+    if not r.is_success:
+        raise Exception(f"Kalshi {r.status_code}: {r.text}")
     return r.json()
 
 # ─── BTC PRICE ────────────────────────────────────────────────────────────────
@@ -320,11 +321,13 @@ async def trading_loop():
                     state["btc_price"] = price
                     state["btc_history"].append(price)
 
-                # 2. Fetch markets (every 3 loops to avoid rate limiting)
-                if state["loop_count"] % 3 == 1 or not state["markets"]:
+                # 2. Fetch markets (every 5 loops to avoid rate limiting)
+                if state["loop_count"] % 5 == 1 or not state["markets"]:
+                    await asyncio.sleep(2)
                     try:
                         markets = await kalshi_markets(client)
                         state["markets"] = markets
+                        log.info(f"Fetched {len(markets)} markets")
                     except Exception as e:
                         log.warning(f"Markets failed: {e}")
                 markets = state["markets"]
@@ -344,6 +347,7 @@ async def trading_loop():
                     await asyncio.sleep(LOOP_SECS); continue
 
                 # 4. Refresh balance
+                await asyncio.sleep(2)
                 try:
                     pk = load_key(KEY_PEM)
                     bal = await kalshi_balance(client, pk, KEY_ID)
