@@ -550,11 +550,8 @@ async def api_balance(b: Auth):
 
 @app.get("/api/markets")
 async def api_markets():
-    async with httpx.AsyncClient() as c:
-        r = await c.get(f"{KALSHI_BASE}/markets",
-            params={"series_ticker": "KXBTC15M", "status": "open", "limit": 6}, timeout=15)
-    if r.status_code != 200: raise HTTPException(r.status_code, r.text)
-    return r.json()
+    # Return cached markets from bot state instead of hitting Kalshi directly
+    return {"markets": state["markets"]}
 
 @app.post("/api/order")
 async def api_order(b: OrderReq):
