@@ -164,6 +164,14 @@ def detect_edge(market: dict, mom: dict) -> dict:
     yes_bid = market.get("yes_bid", 49)
     no_bid  = market.get("no_bid",  49)
 
+    # 0. LIQUIDITY FILTER — skip markets with wide bid-ask spreads (low liquidity)
+    yes_spread = yes_ask - yes_bid
+    no_spread  = no_ask  - no_bid
+    if yes_spread > 15 or no_spread > 15:
+        return {"side": None, "edge_cents": 0, "fair_value": 50,
+                "entry_price": 50, "ev": 0,
+                "reason": f"Low liquidity: YES spread={yes_spread}c NO spread={no_spread}c (max 15c)"}
+
     # 1. SPREAD INEFFICIENCY
     # If YES ask + NO ask < 100, we can buy both sides for < $1 and guarantee profit
     # In practice we pick the mispriced side
@@ -466,12 +474,14 @@ async def trading_loop():
                          f"(edge={best_edge['edge_cents']}c EV={best_edge['ev']}c)")
                 await asyncio.sleep(3)  # rate limit buffer before order
                 try:
+                    # Add 1c slippage to ensure order fills
+                    fill_price = min(99, best_edge["entry_price"] + 1)
                     result = await kalshi_order(
                         client, pk, KEY_ID,
                         best_market["ticker"],
                         best_edge["side"],
                         contracts,
-                        best_edge["entry_price"],
+                        fill_price,
                     )
                     entry = {
                         "time":       now,
