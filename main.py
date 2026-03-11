@@ -91,7 +91,6 @@ async def kalshi_order(client, pk, key_id, ticker, side, count, price_cents):
         "action": "buy", "count": count, "side": side,
         "ticker": ticker, "type": "limit",
         "yes_price": price_cents if side == "yes" else 100 - price_cents,
-        "no_price":  price_cents if side == "no"  else 100 - price_cents,
         "client_order_id": f"btcbot_{int(time.time()*1000)}",
     }
     r = await client.post(KALSHI_BASE + "/portfolio/orders", headers=h, json=payload, timeout=15)
@@ -366,7 +365,7 @@ async def trading_loop():
                 mom = momentum(state["btc_history"])
                 log.info(f"Momentum: {mom['direction']} {mom['pct_5m']:+.3f}% strong={mom['strong']}")
 
-                if not mom["strong"]:
+                if not mom["strong"] and MOM_THRESH > 0.001:
                     state["skip_reason"] = f"Weak momentum: {abs(mom['pct_5m']):.3f}% < {MOM_THRESH}% threshold"
                     await asyncio.sleep(LOOP_SECS); continue
 
