@@ -405,8 +405,20 @@ async def trading_loop():
                 log.info(f"BTC Momentum: {btc_mom['direction']} {btc_mom['pct_5m']:+.3f}% strong={btc_mom['strong']}")
                 log.info(f"ETH Momentum: {eth_mom['direction']} {eth_mom['pct_5m']:+.3f}% strong={eth_mom['strong']}")
 
-                if not btc_mom["strong"] and not eth_mom["strong"] and MOM_THRESH > 0.001:
-                    state["skip_reason"] = f"Weak momentum: BTC {abs(btc_mom['pct_5m']):.3f}% ETH {abs(eth_mom['pct_5m']):.3f}% both < {MOM_THRESH}%"
+                # Check if any market has price far from strike (late-market high-prob setup)
+                def price_far_from_strike(mkt, cur_price):
+                    strike = mkt.get("floor_strike", 0)
+                    if not strike or not cur_price:
+                        return False
+                    return abs(cur_price - strike) >= 100
+
+                btc_far = any(price_far_from_strike(m, price)
+                              for m in markets if "KXBTC" in m.get("ticker",""))
+                eth_far = any(price_far_from_strike(m, state["eth_price"])
+                              for m in markets if "KXETH" in m.get("ticker",""))
+
+                if not btc_mom["strong"] and not eth_mom["strong"] and not btc_far and not eth_far:
+                    state["skip_reason"] = f"Weak momentum: BTC {abs(btc_mom['pct_5m']):.3f}% ETH {abs(eth_mom['pct_5m']):.3f}% and no price far from strike"
                     await asyncio.sleep(LOOP_SECS); continue
 
                 # 6. Find best edge across all markets (BTC + ETH)
@@ -417,7 +429,9 @@ async def trading_loop():
                     # Pick correct momentum for this market
                     is_eth = "KXETH" in mkt.get("ticker", "")
                     mom = eth_mom if is_eth else btc_mom
-                    if not mom["strong"] and MOM_THRESH > 0.001:
+                    cur_price = state["eth_price"] if is_eth else price
+                    far_from_strike = price_far_from_strike(mkt, cur_price)
+                    if not mom["strong"] and not far_from_strike and MOM_THRESH > 0.001:
                         continue
                     # Skip markets closing in less than 3 minutes
                     close_time = mkt.get("close_time", "")
