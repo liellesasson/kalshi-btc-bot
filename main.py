@@ -340,8 +340,8 @@ async def trading_loop():
                     state["eth_price"] = eth_price
                     state["eth_history"].append(eth_price)
 
-                # 2. Fetch markets (every 5 loops to avoid rate limiting)
-                if state["loop_count"] % 5 == 1 or not state["markets"]:
+                # 2. Fetch markets every 2 loops (~3 min), or immediately if none loaded
+                if state["loop_count"] % 2 == 1 or not state["markets"]:
                     await asyncio.sleep(5)
                     try:
                         btc_markets = await kalshi_markets(client, "KXBTC15M")
