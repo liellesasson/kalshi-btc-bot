@@ -179,15 +179,21 @@ def detect_edge(market: dict, mom: dict) -> dict:
     spread_edge = 100 - total_ask  # positive = market underpricing, negative = overpricing
 
     # 2. MOMENTUM-BASED FAIR VALUE
-    # Estimate fair probability based on BTC momentum
+    # Conservative estimate — momentum is a weak signal, not a sure thing.
+    # Max fair value is capped at 68c (strong signal) to avoid overconfidence.
+    # Scale: 0.1% move → ~55c, 0.2% → ~60c, 0.4%+ → ~68c (cap)
     pct = mom["pct_5m"]
     if abs(pct) < 0.05:
         fair_yes = 50.0
-    elif pct > 0:
-        # Positive momentum → higher probability of UP
-        fair_yes = min(85, 50 + (pct / MOM_THRESH) * 15)
     else:
-        fair_yes = max(15, 50 + (pct / MOM_THRESH) * 15)
+        # Logarithmic scaling — big moves add less confidence than small ones
+        import math
+        magnitude = min(abs(pct) / MOM_THRESH, 3.0)  # cap at 3x threshold
+        boost = math.log1p(magnitude) / math.log1p(3.0) * 18  # max +18c boost
+        if pct > 0:
+            fair_yes = min(68, 50 + boost)
+        else:
+            fair_yes = max(32, 50 - boost)
 
     fair_no = 100 - fair_yes
 
