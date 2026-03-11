@@ -288,9 +288,7 @@ Reply ONLY valid JSON:
         return {"direction": "NEUTRAL", "confidence": 0,
                 "reason": f"AI unavailable: {e}", "agree": False}
 
-# ─── MAIN TRADING LOOP ────────────────────────────────────────────────────────
-async def trading_loop():
-
+# ─── KEEP ALIVE ───────────────────────────────────────────────────────────────
 async def keep_alive():
     """Ping ourselves every 10 min so Render free tier never sleeps."""
     await asyncio.sleep(30)
@@ -304,6 +302,8 @@ async def keep_alive():
                 log.warning(f"Keep-alive failed: {e}")
             await asyncio.sleep(600)
 
+# ─── MAIN TRADING LOOP ────────────────────────────────────────────────────────
+async def trading_loop():
     await asyncio.sleep(5)
     log.info("🚀 Trading loop started")
 
