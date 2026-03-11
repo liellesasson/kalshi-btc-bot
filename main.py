@@ -320,13 +320,14 @@ async def trading_loop():
                     state["btc_price"] = price
                     state["btc_history"].append(price)
 
-                # 2. Fetch markets
-                try:
-                    markets = await kalshi_markets(client)
-                    state["markets"] = markets
-                except Exception as e:
-                    log.warning(f"Markets failed: {e}")
-                    markets = state["markets"]
+                # 2. Fetch markets (every 3 loops to avoid rate limiting)
+                if state["loop_count"] % 3 == 1 or not state["markets"]:
+                    try:
+                        markets = await kalshi_markets(client)
+                        state["markets"] = markets
+                    except Exception as e:
+                        log.warning(f"Markets failed: {e}")
+                markets = state["markets"]
 
                 # 3. Skip checks
                 if not state["bot_enabled"]:
