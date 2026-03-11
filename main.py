@@ -368,7 +368,20 @@ async def trading_loop():
                 # 6. Find best edge across all markets
                 best_edge   = None
                 best_market = None
+                now_ts = time.time()
                 for mkt in markets:
+                    # Skip markets closing in less than 3 minutes
+                    close_time = mkt.get("close_time", "")
+                    if close_time:
+                        from datetime import timezone
+                        try:
+                            ct = datetime.fromisoformat(close_time.replace("Z","+00:00"))
+                            secs_left = (ct - datetime.now(timezone.utc)).total_seconds()
+                            if secs_left < 180:
+                                log.info(f"Skipping {mkt['ticker']}: closes in {secs_left:.0f}s")
+                                continue
+                        except Exception:
+                            pass
                     e = detect_edge(mkt, mom)
                     if e["side"] and e["edge_cents"] > (best_edge["edge_cents"] if best_edge else 0):
                         best_edge   = e
