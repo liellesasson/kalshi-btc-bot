@@ -33,6 +33,8 @@ state = {
     "bot_enabled":      BOT_ENABLED,
     "btc_price":        None,
     "btc_history":      deque(maxlen=30),
+    "eth_price":        None,
+    "eth_history":      deque(maxlen=30),
     "last_signal":      None,
     "last_signal_time": None,
     "last_edge":        None,
@@ -80,9 +82,9 @@ async def kalshi_balance(client, pk, key_id):
         return bal.get("balance") or bal.get("available_balance") or 0
     return int(bal) if bal else 0
 
-async def kalshi_markets(client):
+async def kalshi_markets(client, series="KXBTC15M"):
     r = await client.get(f"{KALSHI_BASE}/markets",
-        params={"series_ticker": "KXBTC15M", "status": "open", "limit": 6}, timeout=15)
+        params={"series_ticker": series, "status": "open", "limit": 6}, timeout=15)
     r.raise_for_status()
     return r.json().get("markets") or []
 
@@ -110,6 +112,19 @@ async def fetch_btc(client):
             r = await client.get(
                 "https://api.coinbase.com/v2/prices/BTC-USD/spot", timeout=8)
             return float(r.json()["data"]["amount"])
+        except Exception:
+            return None
+
+async def fetch_eth(client):
+    try:
+        r = await client.get(
+            'https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT', timeout=8)
+        return float(r.json()['price'])
+    except Exception:
+        try:
+            r = await client.get(
+                'https://api.coinbase.com/v2/prices/ETH-USD/spot', timeout=8)
+            return float(r.json()['data']['amount'])
         except Exception:
             return None
 
@@ -315,19 +330,25 @@ async def trading_loop():
                 now = datetime.utcnow().strftime("%H:%M:%S")
                 log.info(f"─── Loop #{state['loop_count']} at {now} ───")
 
-                # 1. Fetch BTC
+                # 1. Fetch BTC + ETH
                 price = await fetch_btc(client)
                 if price:
                     state["btc_price"] = price
                     state["btc_history"].append(price)
+                eth_price = await fetch_eth(client)
+                if eth_price:
+                    state["eth_price"] = eth_price
+                    state["eth_history"].append(eth_price)
 
                 # 2. Fetch markets (every 5 loops to avoid rate limiting)
                 if state["loop_count"] % 5 == 1 or not state["markets"]:
                     await asyncio.sleep(2)
                     try:
-                        markets = await kalshi_markets(client)
-                        state["markets"] = markets
-                        log.info(f"Fetched {len(markets)} markets")
+                        btc_markets = await kalshi_markets(client, "KXBTC15M")
+                        await asyncio.sleep(1)
+                        eth_markets = await kalshi_markets(client, "KXETH15M")
+                        state["markets"] = btc_markets + eth_markets
+                        log.info(f"Fetched {len(btc_markets)} BTC + {len(eth_markets)} ETH markets")
                     except Exception as e:
                         log.warning(f"Markets failed: {e}")
                 markets = state["markets"]
@@ -362,19 +383,26 @@ async def trading_loop():
                     state["skip_reason"] = f"Balance too low: {state['balance']}c < {MIN_BAL}c minimum"
                     await asyncio.sleep(LOOP_SECS); continue
 
-                # 5. Momentum
-                mom = momentum(state["btc_history"])
-                log.info(f"Momentum: {mom['direction']} {mom['pct_5m']:+.3f}% strong={mom['strong']}")
+                # 5. Momentum — compute for both BTC and ETH
+                btc_mom = momentum(state["btc_history"])
+                eth_mom = momentum(state["eth_history"])
+                log.info(f"BTC Momentum: {btc_mom['direction']} {btc_mom['pct_5m']:+.3f}% strong={btc_mom['strong']}")
+                log.info(f"ETH Momentum: {eth_mom['direction']} {eth_mom['pct_5m']:+.3f}% strong={eth_mom['strong']}")
 
-                if not mom["strong"] and MOM_THRESH > 0.001:
-                    state["skip_reason"] = f"Weak momentum: {abs(mom['pct_5m']):.3f}% < {MOM_THRESH}% threshold"
+                if not btc_mom["strong"] and not eth_mom["strong"] and MOM_THRESH > 0.001:
+                    state["skip_reason"] = f"Weak momentum: BTC {abs(btc_mom['pct_5m']):.3f}% ETH {abs(eth_mom['pct_5m']):.3f}% both < {MOM_THRESH}%"
                     await asyncio.sleep(LOOP_SECS); continue
 
-                # 6. Find best edge across all markets
+                # 6. Find best edge across all markets (BTC + ETH)
                 best_edge   = None
                 best_market = None
                 now_ts = time.time()
                 for mkt in markets:
+                    # Pick correct momentum for this market
+                    is_eth = "KXETH" in mkt.get("ticker", "")
+                    mom = eth_mom if is_eth else btc_mom
+                    if not mom["strong"] and MOM_THRESH > 0.001:
+                        continue
                     # Skip markets closing in less than 3 minutes
                     close_time = mkt.get("close_time", "")
                     if close_time:
