@@ -172,57 +172,56 @@ def detect_edge(market: dict, mom: dict) -> dict:
                 "entry_price": 50, "ev": 0,
                 "reason": f"Low liquidity: YES spread={yes_spread}c NO spread={no_spread}c (max 15c)"}
 
-    # 1. SPREAD INEFFICIENCY
-    # If YES ask + NO ask < 100, we can buy both sides for < $1 and guarantee profit
-    # In practice we pick the mispriced side
-    total_ask = yes_ask + no_ask
-    spread_edge = 100 - total_ask  # positive = market underpricing, negative = overpricing
+    import math
 
-    # 2. MOMENTUM-BASED FAIR VALUE
-    # Conservative estimate — momentum is a weak signal, not a sure thing.
-    # Max fair value is capped at 68c (strong signal) to avoid overconfidence.
-    # Scale: 0.1% move → ~55c, 0.2% → ~60c, 0.4%+ → ~68c (cap)
+    # 1. FAIR VALUE — normal CDF calibrated to BTC 15-min volatility
+    # vol=57 means $57 is 1 std dev of BTC price movement in 15 minutes.
+    # This calibration matches observed Kalshi market pricing:
+    #   $117 above strike → ~98% YES (matches market)
+    #   $50  above strike → ~81% YES
+    #   at strike         → 50% YES
+    strike    = market.get("floor_strike", 0)
+    cur_price = mom.get("current_price", 0)
+    distance  = cur_price - strike if (strike and cur_price) else 0
+
+    # ETH has lower absolute vol (~$5-10 per 15min), use proportional vol
+    is_eth = "KXETH" in market.get("ticker", "")
+    vol = 5 if is_eth else 57  # 1-std-dev move in dollars
+
+    def norm_cdf(x):
+        return 0.5 * (1 + math.erf(x / math.sqrt(2)))
+
+    z = distance / vol if vol else 0
+    fair_yes_raw = norm_cdf(z) * 100
+
+    # Small momentum nudge — max ±3 cents, momentum is weak signal
     pct = mom["pct_5m"]
-    if abs(pct) < 0.05:
-        fair_yes = 50.0
-    else:
-        # Logarithmic scaling — big moves add less confidence than small ones
-        import math
-        magnitude = min(abs(pct) / MOM_THRESH, 3.0)  # cap at 3x threshold
-        boost = math.log1p(magnitude) / math.log1p(3.0) * 18  # max +18c boost
-        if pct > 0:
-            fair_yes = min(68, 50 + boost)
-        else:
-            fair_yes = max(32, 50 - boost)
+    nudge = 0.0
+    if abs(pct) >= 0.05:
+        nudge = max(-3.0, min(3.0, pct / MOM_THRESH * 2.0))
+    fair_yes = max(5.0, min(95.0, fair_yes_raw + nudge))
+    fair_no  = 100.0 - fair_yes
 
-    fair_no = 100 - fair_yes
+    # 2. FIND MISPRICED SIDE
+    yes_mispricing = fair_yes - yes_ask
+    no_mispricing  = fair_no  - no_ask
 
-    # 3. MISPRICING EDGE
-    # How far is the market price from our fair value?
-    yes_mispricing = fair_yes - yes_ask   # positive = YES is underpriced (buy YES)
-    no_mispricing  = fair_no  - no_ask    # positive = NO is underpriced (buy NO)
-
-    if yes_mispricing >= no_mispricing and yes_mispricing > 0:
+    # Only buy a side if our model agrees with the direction
+    # (fair > 52 guard prevents betting against a strongly-priced market)
+    if yes_mispricing >= no_mispricing and yes_mispricing > 0 and fair_yes > 52:
         side        = "yes"
         entry_price = yes_ask
         edge_cents  = yes_mispricing
         fair_value  = fair_yes
-    elif no_mispricing > 0:
+    elif no_mispricing > 0 and fair_no > 52:
         side        = "no"
         entry_price = no_ask
         edge_cents  = no_mispricing
         fair_value  = fair_no
     else:
-        # No directional edge — only trade with momentum direction, never against it
-        if spread_edge > 0 and mom["direction"] != "NEUTRAL":
-            if mom["direction"] == "UP":
-                side, entry_price, edge_cents, fair_value = "yes", yes_ask, spread_edge/2 + abs(yes_mispricing), fair_yes
-            else:
-                side, entry_price, edge_cents, fair_value = "no",  no_ask,  spread_edge/2 + abs(no_mispricing),  fair_no
-        else:
-            return {"side": None, "edge_cents": 0, "fair_value": 50,
-                    "entry_price": 50, "ev": 0,
-                    "reason": f"No edge: fair={fair_yes:.1f}c YES={yes_ask}c NO={no_ask}c spread={total_ask}"}
+        return {"side": None, "edge_cents": 0, "fair_value": round(fair_yes, 1),
+                "entry_price": 50, "ev": 0,
+                "reason": f"No edge: fair={fair_yes:.1f}c YES={yes_ask}c NO={no_ask}c dist={distance:+.0f}"}
 
     # 4. EXPECTED VALUE per contract
     # EV = (prob_win * profit_per_contract) - (prob_lose * cost_per_contract)
@@ -449,7 +448,8 @@ async def trading_loop():
                     if mkt["ticker"] in state["traded_tickers"]:
                         log.info(f"Skipping {mkt['ticker']}: already have position")
                         continue
-                    e = detect_edge(mkt, mom)
+                    mom_with_price = {**mom, "current_price": cur_price}
+                    e = detect_edge(mkt, mom_with_price)
                     if e["side"] and e["edge_cents"] > (best_edge["edge_cents"] if best_edge else 0):
                         best_edge   = e
                         best_market = mkt
