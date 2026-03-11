@@ -206,6 +206,14 @@ def detect_edge(market: dict, mom: dict) -> dict:
     yes_mispricing = fair_yes - yes_ask
     no_mispricing  = fair_no  - no_ask
 
+    # Minimum distance filter — skip near-strike coin flips
+    # BTC: must be >$80 from strike. ETH: must be >$8 from strike.
+    min_dist = 8 if is_eth else 80
+    if abs(distance) < min_dist:
+        return {"side": None, "edge_cents": 0, "fair_value": round(fair_yes, 1),
+                "entry_price": 50, "ev": 0,
+                "reason": f"Too close to strike: {distance:+.0f} (min {min_dist})"}
+
     # Only buy a side if our model agrees with the direction
     # (fair > 52 guard prevents betting against a strongly-priced market)
     if yes_mispricing >= no_mispricing and yes_mispricing > 0 and fair_yes > 52:
