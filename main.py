@@ -290,6 +290,20 @@ Reply ONLY valid JSON:
 
 # ─── MAIN TRADING LOOP ────────────────────────────────────────────────────────
 async def trading_loop():
+
+async def keep_alive():
+    """Ping ourselves every 10 min so Render free tier never sleeps."""
+    await asyncio.sleep(30)
+    url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:10000")
+    async with httpx.AsyncClient() as client:
+        while True:
+            try:
+                await client.get(f"{url}/health", timeout=10)
+                log.info("Keep-alive ping sent")
+            except Exception as e:
+                log.warning(f"Keep-alive failed: {e}")
+            await asyncio.sleep(600)
+
     await asyncio.sleep(5)
     log.info("🚀 Trading loop started")
 
@@ -448,6 +462,7 @@ async def trading_loop():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     task = asyncio.create_task(trading_loop())
+    asyncio.create_task(keep_alive())
     yield
     task.cancel()
 
