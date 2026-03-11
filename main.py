@@ -320,7 +320,7 @@ async def keep_alive():
 
 # ─── MAIN TRADING LOOP ────────────────────────────────────────────────────────
 async def trading_loop():
-    await asyncio.sleep(5)
+    await asyncio.sleep(15)
     log.info("🚀 Trading loop started")
 
     async with httpx.AsyncClient() as client:
@@ -342,11 +342,14 @@ async def trading_loop():
 
                 # 2. Fetch markets (every 5 loops to avoid rate limiting)
                 if state["loop_count"] % 5 == 1 or not state["markets"]:
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(5)
                     try:
                         btc_markets = await kalshi_markets(client, "KXBTC15M")
-                        await asyncio.sleep(1)
-                        eth_markets = await kalshi_markets(client, "KXETH15M")
+                        await asyncio.sleep(3)
+                        try:
+                            eth_markets = await kalshi_markets(client, "KXETH15M")
+                        except Exception:
+                            eth_markets = []
                         state["markets"] = btc_markets + eth_markets
                         log.info(f"Fetched {len(btc_markets)} BTC + {len(eth_markets)} ETH markets")
                     except Exception as e:
@@ -530,6 +533,7 @@ def get_status():
     return {
         "bot_enabled":      state["bot_enabled"],
         "btc_price":        state["btc_price"],
+        "eth_price":        state["eth_price"],
         "balance_cents":    state["balance"],
         "balance_dollars":  round(state["balance"] / 100, 2) if state["balance"] else None,
         "last_signal":      state["last_signal"],
@@ -706,7 +710,12 @@ body{background:#03050a;color:#dce8f0;font-family:'Syne',sans-serif;min-height:1
   <div class="card">
     <div class="card-lbl">BTC Price</div>
     <div class="card-val" id="s-btc"><span class="spin"></span></div>
-    <div class="card-sub" id="s-mom">momentum: —</div>
+    <div class="card-sub" id="s-btc-mom">momentum: —</div>
+  </div>
+  <div class="card">
+    <div class="card-lbl">ETH Price</div>
+    <div class="card-val" id="s-eth"><span class="spin"></span></div>
+    <div class="card-sub" id="s-eth-mom">momentum: —</div>
   </div>
   <div class="card">
     <div class="card-lbl">Balance</div>
@@ -714,13 +723,9 @@ body{background:#03050a;color:#dce8f0;font-family:'Syne',sans-serif;min-height:1
     <div class="card-sub" id="s-bal-c">— cents</div>
   </div>
   <div class="card">
-    <div class="card-lbl">Trades Placed</div>
+    <div class="card-lbl">Trades · Loop</div>
     <div class="card-val" id="s-trades">0</div>
     <div class="card-sub" id="s-loop">loop #0</div>
-  </div>
-  <div class="card">
-    <div class="card-lbl">Last Error</div>
-    <div class="card-val" style="font-size:13px" id="s-err">none</div>
   </div>
 </div>
 
@@ -811,15 +816,14 @@ async function poll(){
       document.getElementById("s-bal-c").textContent = s.balance_cents+"c";
     }
 
-    // btc
+    // btc + eth prices
     if(s.btc_price) document.getElementById("s-btc").textContent = "$"+Math.round(s.btc_price).toLocaleString();
+    if(s.eth_price) document.getElementById("s-eth").textContent = "$"+Math.round(s.eth_price).toLocaleString();
 
     // stats
     document.getElementById("s-trades").textContent = s.trade_count;
     document.getElementById("s-loop").textContent   = "loop #"+s.loop_count;
     document.getElementById("s-loop2").textContent  = "loop #"+s.loop_count;
-    document.getElementById("s-err").textContent    = s.last_error||"none";
-    document.getElementById("s-err").style.color    = s.last_error?"#ff9800":"#00e676";
 
     // bot sub
     document.getElementById("bot-sub").textContent = on
@@ -892,6 +896,7 @@ async function poll(){
           <div class="log-main">
             <span style="color:#4a6070;font-size:10px">${t.time}</span>
             <span style="flex:1">${t.ticker}</span>
+            <span style="font-size:10px;padding:2px 5px;border-radius:3px;background:${t.ticker&&t.ticker.includes('ETH')?'rgba(98,126,234,.15)':'rgba(247,183,49,.1)'};color:${t.ticker&&t.ticker.includes('ETH')?'#627eea':'#f7b731'}">${t.ticker&&t.ticker.includes('ETH')?'ETH':'BTC'}</span>
             <span class="${t.side==="yes"?"ls-y":"ls-n"}">${t.side==="yes"?"▲ YES":"▼ NO"}</span>
             <span style="font-weight:700">${t.qty}x @ ${t.price}¢</span>
             <span style="color:${failed?"#ff9800":t.status==="MANUAL"?"#4a6070":"#00e676"}">${t.status}</span>
