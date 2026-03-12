@@ -526,7 +526,18 @@ async def trading_loop():
                     contracts = max(1, int(state["balance"] * 0.5 / best_edge["entry_price"]))
                     cost = contracts * best_edge["entry_price"]
 
-                # 9. ✅ PLACE TRADE
+                # 9. ✅ PLACE TRADE — re-check distance hasn't shrunk below minimum
+                is_eth_mkt = "KXETH" in best_market.get("ticker", "")
+                cur_price_now = state["eth_price"] if is_eth_mkt else state["btc_price"]
+                strike_now = best_market.get("floor_strike", 0)
+                dist_now = abs(cur_price_now - strike_now) if (cur_price_now and strike_now) else 0
+                min_dist_now = 8 if is_eth_mkt else 80
+                if dist_now < min_dist_now:
+                    state["skip_reason"] = f"Distance shrunk before fill: {dist_now:.0f} < {min_dist_now} — aborting"
+                    log.warning(state["skip_reason"])
+                    state["traded_tickers"].discard(best_market["ticker"])
+                    await asyncio.sleep(LOOP_SECS); continue
+
                 log.info(f"🔥 TRADING: {contracts}x {best_edge['side'].upper()} @ "
                          f"{best_edge['entry_price']}c on {best_market['ticker']} "
                          f"(edge={best_edge['edge_cents']}c EV={best_edge['ev']}c)")
