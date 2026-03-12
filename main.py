@@ -178,13 +178,29 @@ def detect_edge(market: dict, mom: dict) -> dict:
     yes_bid = to_cents(market, "yes_bid", 49)
     no_bid  = to_cents(market, "no_bid",  49)
 
-    # 0. LIQUIDITY FILTER — skip markets with wide bid-ask spreads (low liquidity)
+    # 0. LIQUIDITY FILTER — skip markets with wide bid-ask spreads or thin order books
     yes_spread = yes_ask - yes_bid
     no_spread  = no_ask  - no_bid
     if yes_spread > 15 or no_spread > 15:
         return {"side": None, "edge_cents": 0, "fair_value": 50,
                 "entry_price": 50, "ev": 0,
                 "reason": f"Low liquidity: YES spread={yes_spread}c NO spread={no_spread}c (max 15c)"}
+
+    # Minimum ask size filter — skip if fewer than 10 contracts available
+    def to_size(market, key):
+        v = market.get(key)
+        if v is not None:
+            try: return float(v)
+            except: pass
+        return 0
+
+    yes_ask_size = to_size(market, "yes_ask_size_fp")
+    no_ask_size  = to_size(market, "no_ask_size_fp")
+    MIN_ASK_SIZE = 10
+    if yes_ask_size < MIN_ASK_SIZE and no_ask_size < MIN_ASK_SIZE:
+        return {"side": None, "edge_cents": 0, "fair_value": 50,
+                "entry_price": 50, "ev": 0,
+                "reason": f"Thin book: YES ask size={yes_ask_size:.0f} NO ask size={no_ask_size:.0f} (min {MIN_ASK_SIZE})"}
 
     import math
 
@@ -557,6 +573,8 @@ async def trading_loop():
                         "status": f"FAILED: {e}", "reason": sig["reason"],
                     })
                     log.error(state["last_error"])
+                    # Remove ticker so bot can retry when liquidity appears
+                    state["traded_tickers"].discard(best_market["ticker"])
 
             except Exception as e:
                 state["last_error"] = str(e)
