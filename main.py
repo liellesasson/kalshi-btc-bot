@@ -23,7 +23,7 @@ MIN_BAL       = float(os.getenv("MIN_BALANCE_CENTS", "300")) # min balance to tr
 MOM_THRESH    = float(os.getenv("MOMENTUM_THRESHOLD", "0.10"))
 MIN_CONF      = int(os.getenv("MIN_CONFIDENCE", "65"))
 BOT_ENABLED   = os.getenv("BOT_ENABLED", "true").lower() == "true"
-LOOP_SECS     = int(os.getenv("LOOP_INTERVAL_SECS", "90"))
+LOOP_SECS     = int(os.getenv("LOOP_INTERVAL_SECS", "60"))
 
 KALSHI_BASE   = "https://api.elections.kalshi.com/trade-api/v2"
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
@@ -375,7 +375,7 @@ async def trading_loop():
                     state["eth_history"].append(eth_price)
 
                 # 2. Fetch markets every 2 loops (~3 min), or immediately if none loaded
-                if state["loop_count"] % 2 == 1 or not state["markets"]:
+                if True:  # fetch markets every loop to catch new market opens
                     await asyncio.sleep(5)
                     try:
                         btc_markets = await kalshi_markets(client, "KXBTC15M")
