@@ -197,10 +197,6 @@ def detect_edge(market: dict, mom: dict) -> dict:
     yes_ask_size = to_size(market, "yes_ask_size_fp")
     no_ask_size  = to_size(market, "no_ask_size_fp")
     MIN_ASK_SIZE = 10
-    if yes_ask_size < MIN_ASK_SIZE and no_ask_size < MIN_ASK_SIZE:
-        return {"side": None, "edge_cents": 0, "fair_value": 50,
-                "entry_price": 50, "ev": 0,
-                "reason": f"Thin book: YES ask size={yes_ask_size:.0f} NO ask size={no_ask_size:.0f} (min {MIN_ASK_SIZE})"}
 
     import math
 
@@ -260,6 +256,13 @@ def detect_edge(market: dict, mom: dict) -> dict:
         return {"side": None, "edge_cents": 0, "fair_value": round(fair_yes, 1),
                 "entry_price": 50, "ev": 0,
                 "reason": f"No edge: fair={fair_yes:.1f}c YES={yes_ask}c NO={no_ask}c dist={distance:+.0f}"}
+
+    # 3b. LIQUIDITY CHECK on chosen side
+    chosen_ask_size = yes_ask_size if side == "yes" else no_ask_size
+    if chosen_ask_size < MIN_ASK_SIZE:
+        return {"side": None, "edge_cents": 0, "fair_value": round(fair_yes, 1),
+                "entry_price": entry_price, "ev": 0,
+                "reason": f"Thin {side.upper()} book: ask size={chosen_ask_size:.0f} (min {MIN_ASK_SIZE})"}
 
     # 4. EXPECTED VALUE per contract
     # EV = (prob_win * profit_per_contract) - (prob_lose * cost_per_contract)
