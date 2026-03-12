@@ -159,10 +159,24 @@ def detect_edge(market: dict, mom: dict) -> dict:
         ev         - expected value per dollar risked
         reason     - human readable explanation
     """
-    yes_ask = market.get("yes_ask", 50)
-    no_ask  = market.get("no_ask",  50)
-    yes_bid = market.get("yes_bid", 49)
-    no_bid  = market.get("no_bid",  49)
+    # Handle both integer cent fields and dollar string fields from Kalshi API
+    def to_cents(market, key, default):
+        v = market.get(key)
+        if v is not None:
+            return int(v)
+        # Fall back to dollar field (e.g. yes_ask_dollars -> "0.0600" -> 6)
+        dv = market.get(key + "_dollars")
+        if dv is not None:
+            try:
+                return round(float(dv) * 100)
+            except Exception:
+                pass
+        return default
+
+    yes_ask = to_cents(market, "yes_ask", 50)
+    no_ask  = to_cents(market, "no_ask",  50)
+    yes_bid = to_cents(market, "yes_bid", 49)
+    no_bid  = to_cents(market, "no_bid",  49)
 
     # 0. LIQUIDITY FILTER — skip markets with wide bid-ask spreads (low liquidity)
     yes_spread = yes_ask - yes_bid
