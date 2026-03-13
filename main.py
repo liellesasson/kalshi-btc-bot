@@ -240,6 +240,14 @@ def detect_edge(market: dict, mom: dict) -> dict:
                 "entry_price": 50, "ev": 0,
                 "reason": f"Too close to strike: {distance:+.0f} (min {min_dist})"}
 
+    # Momentum conflict check — if 1m contradicts 5m, trend is reversing, skip
+    pct_1m = mom.get("pct_1m", 0)
+    mom_conflict = (pct_5m > 0 and pct_1m < -0.05) or (pct_5m < 0 and pct_1m > 0.05)
+    if mom_conflict:
+        return {"side": None, "edge_cents": 0, "fair_value": round(fair_yes, 1),
+                "entry_price": 50, "ev": 0,
+                "reason": f"Momentum conflict: 5m={pct_5m:+.3f}% vs 1m={pct_1m:+.3f}% — trend reversing"}
+
     # Only buy a side if our model agrees with the direction
     # (fair > 52 guard prevents betting against a strongly-priced market)
     if yes_mispricing >= no_mispricing and yes_mispricing > 0 and fair_yes > 52:
